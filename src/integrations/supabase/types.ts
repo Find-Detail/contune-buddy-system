@@ -245,14 +245,85 @@ export type Database = {
           },
         ]
       }
+      facebook_lead_integration: {
+        Row: {
+          access_token: string
+          created_at: string
+          id: string
+          is_active: boolean
+          page_id: string
+          page_name: string
+          updated_at: string
+          webhook_verify_token: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          page_id: string
+          page_name: string
+          updated_at?: string
+          webhook_verify_token: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          page_id?: string
+          page_name?: string
+          updated_at?: string
+          webhook_verify_token?: string
+        }
+        Relationships: []
+      }
+      lead_distribution_rules: {
+        Row: {
+          conditions: Json | null
+          created_at: string
+          distribution_type: string
+          id: string
+          is_active: boolean
+          name: string
+          priority: number
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          conditions?: Json | null
+          created_at?: string
+          distribution_type?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          priority?: number
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          conditions?: Json | null
+          created_at?: string
+          distribution_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          priority?: number
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           assigned_to: string | null
           campaign_source: string | null
           company: string | null
           created_at: string
+          distribution_rule_id: string | null
           email: string | null
           estimated_value: number | null
+          facebook_lead_id: string | null
           first_name: string
           heat_score: number | null
           id: string
@@ -274,8 +345,10 @@ export type Database = {
           campaign_source?: string | null
           company?: string | null
           created_at?: string
+          distribution_rule_id?: string | null
           email?: string | null
           estimated_value?: number | null
+          facebook_lead_id?: string | null
           first_name: string
           heat_score?: number | null
           id?: string
@@ -297,8 +370,10 @@ export type Database = {
           campaign_source?: string | null
           company?: string | null
           created_at?: string
+          distribution_rule_id?: string | null
           email?: string | null
           estimated_value?: number | null
+          facebook_lead_id?: string | null
           first_name?: string
           heat_score?: number | null
           id?: string
@@ -321,6 +396,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_distribution_rule_id_fkey"
+            columns: ["distribution_rule_id"]
+            isOneToOne: false
+            referencedRelation: "lead_distribution_rules"
             referencedColumns: ["id"]
           },
           {
@@ -364,6 +446,58 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      rule_assignments: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          rule_id: string | null
+          team_id: string | null
+          user_id: string | null
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          rule_id?: string | null
+          team_id?: string | null
+          user_id?: string | null
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          rule_id?: string | null
+          team_id?: string | null
+          user_id?: string | null
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_assignments_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "lead_distribution_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_assignments_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tasks: {
         Row: {
