@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Package, ShoppingCart, FileText, TrendingUp, AlertTriangle, Search, Filter, Download, Eye } from "lucide-react";
+import { Plus, Package, ShoppingCart, FileText, TrendingUp, AlertTriangle, Search, Filter, Download, Eye, BarChart3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AddProductDialog } from "@/components/dialogs/AddProductDialog";
 import { CreateSalesOrderDialog } from "@/components/dialogs/CreateSalesOrderDialog";
