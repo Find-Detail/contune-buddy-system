@@ -66,12 +66,23 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
 
   const addProductMutation = useMutation({
     mutationFn: async (data: ProductForm) => {
-      const { initial_stock, reorder_level, ...productData } = data;
+      const { initial_stock, reorder_level, ...formData } = data;
       
-      // Insert product
+      // Prepare product data with required fields
+      const productData = {
+        name: formData.name,
+        sku: formData.sku,
+        unit_price: formData.unit_price,
+        description: formData.description || null,
+        category_id: formData.category_id || null,
+        cost_price: formData.cost_price || null,
+        weight: formData.weight || null,
+      };
+      
+      // Insert product (remove array wrapper)
       const { data: product, error: productError } = await supabase
         .from('products')
-        .insert([productData])
+        .insert(productData)
         .select()
         .single();
 
@@ -80,11 +91,11 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
       // Insert initial inventory
       const { error: inventoryError } = await supabase
         .from('inventory')
-        .insert([{
+        .insert({
           product_id: product.id,
           quantity_on_hand: initial_stock || 0,
           reorder_level: reorder_level || 10,
-        }]);
+        });
 
       if (inventoryError) throw inventoryError;
 
@@ -92,12 +103,12 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
       if (initial_stock && initial_stock > 0) {
         await supabase
           .from('inventory_movements')
-          .insert([{
+          .insert({
             product_id: product.id,
             movement_type: 'adjustment',
             quantity: initial_stock,
             notes: 'Initial stock entry',
-          }]);
+          });
       }
 
       return product;
