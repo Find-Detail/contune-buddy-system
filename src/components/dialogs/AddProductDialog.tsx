@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { ProductForm } from "@/components/forms/ProductForm";
 import { useAddProduct } from "@/hooks/useAddProduct";
 import { productSchema, ProductFormData } from "@/schemas/productSchema";
+import { generateSKU } from "@/lib/utils";
+import { useEffect } from "react";
 
 interface AddProductDialogProps {
   open: boolean;
@@ -26,8 +28,23 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
       weight: 0,
       reorder_level: 10,
       initial_stock: 0,
+      barcode: "",
+      supplier: "",
+      brand: "",
+      warranty_period: 12,
+      tags: [],
     },
   });
+
+  // Auto-generate SKU when product name changes
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'name' && value.name && !form.getValues('sku')) {
+        form.setValue('sku', generateSKU(value.name));
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   const onSubmit = (data: ProductFormData) => {
     addProductMutation.mutate(data, {
@@ -38,13 +55,18 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
     });
   };
 
+  const handleClose = () => {
+    form.reset();
+    onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add New Product</DialogTitle>
           <DialogDescription>
-            Add a new product to your inventory system.
+            Create a new product and set up its inventory details. All required fields are marked with *.
           </DialogDescription>
         </DialogHeader>
 
@@ -54,8 +76,8 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
           isLoading={addProductMutation.isPending} 
         />
 
-        <div className="flex justify-end space-x-2">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <div className="flex justify-end space-x-2 pt-4 border-t">
+          <Button type="button" variant="outline" onClick={handleClose}>
             Cancel
           </Button>
           <Button 
@@ -63,7 +85,7 @@ export const AddProductDialog = ({ open, onOpenChange }: AddProductDialogProps) 
             disabled={addProductMutation.isPending}
             onClick={form.handleSubmit(onSubmit)}
           >
-            {addProductMutation.isPending ? "Adding..." : "Add Product"}
+            {addProductMutation.isPending ? "Adding Product..." : "Add Product"}
           </Button>
         </div>
       </DialogContent>

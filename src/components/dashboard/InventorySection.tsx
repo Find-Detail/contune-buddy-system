@@ -6,21 +6,29 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Package, ShoppingCart, FileText, TrendingUp, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Package, ShoppingCart, FileText, TrendingUp, AlertTriangle, Search, Filter, Download, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AddProductDialog } from "@/components/dialogs/AddProductDialog";
 import { CreateSalesOrderDialog } from "@/components/dialogs/CreateSalesOrderDialog";
 import { CreateQuotationDialog } from "@/components/dialogs/CreateQuotationDialog";
+import { InventoryDashboard } from "@/components/inventory/InventoryDashboard";
+import { useInventoryMovements } from "@/hooks/useInventoryMovements";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 export const InventorySection = () => {
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [showCreateOrder, setShowCreateOrder] = useState(false);
   const [showCreateQuotation, setShowCreateQuotation] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
 
   const { data: products, isLoading: productsLoading } = useQuery({
-    queryKey: ['products'],
+    queryKey: ['products', searchTerm, categoryFilter, stockFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('products')
         .select(`
           *,
@@ -32,6 +40,42 @@ export const InventorySection = () => {
             reorder_level
           )
         `)
+        .eq('is_active', true)
+        .order('name');
+      
+      if (searchTerm) {
+        query = query.or(`name.ilike.%${searchTerm}%,sku.ilike.%${searchTerm}%`);
+      }
+      
+      if (categoryFilter !== 'all') {
+        query = query.eq('category_id', categoryFilter);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      // Apply stock filter
+      if (stockFilter === 'low') {
+        return data?.filter(product => 
+          (product.inventory[0]?.quantity_available || 0) <= (product.inventory[0]?.reorder_level || 0)
+        );
+      } else if (stockFilter === 'out') {
+        return data?.filter(product => 
+          (product.inventory[0]?.quantity_available || 0) === 0
+        );
+      }
+      
+      return data;
+    }
+  });
+
+  const { data: categories } = useQuery({
+    queryKey: ['product-categories'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_categories')
+        .select('*')
         .eq('is_active', true)
         .order('name');
       
@@ -59,26 +103,26 @@ export const InventorySection = () => {
     }
   });
 
-  const { data: lowStockProducts } = useQuery({
-    queryKey: ['low-stock-products'],
+  const { data: quotations } = useQuery({
+    queryKey: ['quotations'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('products')
+        .from('quotations')
         .select(`
           *,
-          inventory!inner(
-            quantity_on_hand,
-            quantity_available,
-            reorder_level
-          )
+          clients(company_name),
+          leads(first_name, last_name),
+          profiles(first_name, last_name)
         `)
-        .lte('inventory.quantity_available', 'inventory.reorder_level')
-        .eq('is_active', true);
+        .order('created_at', { ascending: false })
+        .limit(10);
       
       if (error) throw error;
       return data;
     }
   });
+
+  const { data: inventoryMovements } = useInventoryMovements();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -102,12 +146,21 @@ export const InventorySection = () => {
     }
   };
 
+  const getStockStatus = (product: any) => {
+    const available = product.inventory[0]?.quantity_available || 0;
+    const reorderLevel = product.inventory[0]?.reorder_level || 0;
+    
+    if (available === 0) return { status: 'Out of Stock', color: 'destructive' };
+    if (available <= reorderLevel) return { status: 'Low Stock', color: 'secondary' };
+    return { status: 'In Stock', color: 'default' };
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Inventory Management</h2>
-          <p className="text-muted-foreground">Manage products, track inventory, and process orders</p>
+          <p className="text-muted-foreground">Comprehensive inventory tracking and management system</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setShowAddProduct(true)}>
@@ -122,48 +175,73 @@ export const InventorySection = () => {
             <FileText className="h-4 w-4 mr-2" />
             New Quote
           </Button>
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
         </div>
       </div>
 
-      {/* Low Stock Alert */}
-      {lowStockProducts && lowStockProducts.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="text-orange-800 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Low Stock Alert
-            </CardTitle>
-            <CardDescription className="text-orange-700">
-              {lowStockProducts.length} products are running low on stock
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {lowStockProducts.map((product: any) => (
-                <Badge key={product.id} variant="outline" className="text-orange-800 border-orange-300">
-                  {product.name} ({product.inventory[0]?.quantity_available || 0} left)
-                </Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Tabs defaultValue="products" className="space-y-4">
-        <TabsList>
+      <Tabs defaultValue="dashboard" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="orders">Sales Orders</TabsTrigger>
           <TabsTrigger value="quotations">Quotations</TabsTrigger>
-          <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsTrigger value="movements">Movements</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="space-y-4">
+          <InventoryDashboard />
+        </TabsContent>
 
         <TabsContent value="products" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Products
-              </CardTitle>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Products ({products?.length || 0})
+                  </CardTitle>
+                  <CardDescription>Manage your product inventory</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search products..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-8 w-64"
+                    />
+                  </div>
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {categories?.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={stockFilter} onValueChange={setStockFilter}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Stock" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Stock</SelectItem>
+                      <SelectItem value="low">Low Stock</SelectItem>
+                      <SelectItem value="out">Out of Stock</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {productsLoading ? (
@@ -176,37 +254,48 @@ export const InventorySection = () => {
                       <TableHead>SKU</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Price</TableHead>
+                      <TableHead>Cost</TableHead>
                       <TableHead>Stock</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {products?.map((product: any) => (
-                      <TableRow key={product.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{product.name}</div>
-                            <div className="text-sm text-muted-foreground">{product.description}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono">{product.sku}</TableCell>
-                        <TableCell>{product.product_categories?.name || 'Uncategorized'}</TableCell>
-                        <TableCell>${product.unit_price}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span>{product.inventory[0]?.quantity_available || 0}</span>
-                            {(product.inventory[0]?.quantity_available || 0) <= (product.inventory[0]?.reorder_level || 0) && (
-                              <AlertTriangle className="h-4 w-4 text-orange-500" />
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={product.is_active ? "default" : "secondary"}>
-                            {product.is_active ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {products?.map((product: any) => {
+                      const stockStatus = getStockStatus(product);
+                      return (
+                        <TableRow key={product.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{product.name}</div>
+                              <div className="text-sm text-muted-foreground">{product.description}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono">{product.sku}</TableCell>
+                          <TableCell>{product.product_categories?.name || 'Uncategorized'}</TableCell>
+                          <TableCell>{formatCurrency(product.unit_price)}</TableCell>
+                          <TableCell>{product.cost_price ? formatCurrency(product.cost_price) : '-'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span>{product.inventory[0]?.quantity_available || 0}</span>
+                              {stockStatus.status !== 'In Stock' && (
+                                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={stockStatus.color as any}>
+                              {stockStatus.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -219,7 +308,7 @@ export const InventorySection = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5" />
-                Recent Sales Orders
+                Sales Orders
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -249,7 +338,7 @@ export const InventorySection = () => {
                         <TableCell>
                           {order.profiles ? `${order.profiles.first_name} ${order.profiles.last_name}` : 'N/A'}
                         </TableCell>
-                        <TableCell>${order.total_amount}</TableCell>
+                        <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                         <TableCell>
                           <Badge className={getStatusColor(order.status)}>
                             {order.status}
@@ -260,7 +349,7 @@ export const InventorySection = () => {
                             {order.payment_status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDate(order.created_at)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -279,24 +368,104 @@ export const InventorySection = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                Quotations management will be implemented here
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Quote #</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Sales Rep</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Valid Until</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {quotations?.map((quote: any) => (
+                    <TableRow key={quote.id}>
+                      <TableCell className="font-mono">{quote.quote_number}</TableCell>
+                      <TableCell>
+                        {quote.clients?.company_name || 
+                         (quote.leads ? `${quote.leads.first_name} ${quote.leads.last_name}` : 'N/A')}
+                      </TableCell>
+                      <TableCell>
+                        {quote.profiles ? `${quote.profiles.first_name} ${quote.profiles.last_name}` : 'N/A'}
+                      </TableCell>
+                      <TableCell>{formatCurrency(quote.total_amount)}</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(quote.status)}>
+                          {quote.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{quote.valid_until ? formatDate(quote.valid_until) : 'N/A'}</TableCell>
+                      <TableCell>{formatDate(quote.created_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="inventory" className="space-y-4">
+        <TabsContent value="movements" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                Inventory Levels
+                Inventory Movements
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {inventoryMovements?.map((movement: any) => (
+                    <TableRow key={movement.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{movement.products?.name}</div>
+                          <div className="text-sm text-muted-foreground">{movement.products?.sku}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={movement.quantity > 0 ? "default" : "secondary"}>
+                          {movement.movement_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className={movement.quantity > 0 ? "text-green-600" : "text-red-600"}>
+                          {movement.quantity > 0 ? "+" : ""}{movement.quantity}
+                        </span>
+                      </TableCell>
+                      <TableCell>{movement.notes || '-'}</TableCell>
+                      <TableCell>{formatDate(movement.created_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reports" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Inventory Reports
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center py-8 text-muted-foreground">
-                Detailed inventory tracking will be implemented here
+                Advanced reporting features coming soon
               </div>
             </CardContent>
           </Card>
